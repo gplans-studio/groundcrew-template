@@ -11,6 +11,8 @@
  *   object such as {"lint": "success"}.
  * comments.json: the GitHub issue comments of the PR
  *   (gh api repos/{owner}/{repo}/issues/{n}/comments), or [{"author", "body"}].
+ * --approver-association OWNER,MEMBER also accepts checks from commenters whose
+ *   GitHub author_association is in the list (used by the evaluation workflow).
  */
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -27,7 +29,7 @@ import {
 import { parseMission, validateMission } from "./validate.mts";
 
 type CheckRuns = { check_runs: { name: string; status: string; conclusion: string | null }[] };
-type ApiComment = { user?: { login?: string }; author?: string; body?: string };
+type ApiComment = { user?: { login?: string }; author?: string; body?: string; author_association?: string };
 
 export function readChecks(raw: unknown): Record<string, JobConclusion> {
   if (raw && typeof raw === "object" && "check_runs" in raw) {
@@ -47,6 +49,17 @@ export function readComments(raw: unknown): Comment[] {
   }));
 }
 
+/** Logins of commenters whose association with the repository is trusted. */
+export function approversByAssociation(raw: unknown, associations: string[]): string[] {
+  const allowed = new Set(associations.map((a) => a.trim().toUpperCase()).filter(Boolean));
+  const logins = new Set<string>();
+  for (const c of raw as ApiComment[]) {
+    const login = c.user?.login;
+    if (login && c.author_association && allowed.has(c.author_association.toUpperCase())) logins.add(login);
+  }
+  return [...logins];
+}
+
 function main() {
   const { values } = parseArgs({
     options: {
@@ -54,6 +67,7 @@ function main() {
       checks: { type: "string" },
       comments: { type: "string" },
       approver: { type: "string", multiple: true },
+      "approver-association": { type: "string" },
       date: { type: "string" },
       json: { type: "boolean", default: false },
     },
@@ -71,8 +85,13 @@ function main() {
   }
   const { data } = parseMission(text);
   const checks = readChecks(JSON.parse(readFileSync(values.checks, "utf8")));
-  const comments = values.comments ? readComments(JSON.parse(readFileSync(values.comments, "utf8"))) : [];
-  const creatorChecks = parseCreatorChecks(comments, values.approver ?? []);
+  const rawComments: unknown = values.comments ? JSON.parse(readFileSync(values.comments, "utf8")) : [];
+  const comments = readComments(rawComments);
+  const approvers = [
+    ...(values.approver ?? []),
+    ...approversByAssociation(rawComments, (values["approver-association"] ?? "").split(",")),
+  ];
+  const creatorChecks = parseCreatorChecks(comments, approvers);
   const date = values.date ?? new Date().toISOString().slice(0, 10);
 
   const evaluation = evaluateMission(data.acceptance_criteria as Criterion[], checks, creatorChecks, date);
