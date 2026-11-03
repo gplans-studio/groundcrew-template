@@ -27,6 +27,7 @@ This project was created from the Groundcrew template: Next.js (App Router, Type
 | `npm run db:reset` | Recreate the local database from migrations |
 | `npm run test:integration` | Database tests against local Supabase; export `npx supabase status -o env` first |
 | `npm run missions:check` | Validate every mission in `.groundcrew/missions/` against the contract |
+| `npm run missions:evaluate -- --mission <file> --checks <file> [--comments <file>] --approver <login>` | Apply the evidence rubric to a mission and its PR (see below) |
 
 CI runs `lint`, `typecheck`, `unit`, `build`, `e2e`, `db` and `secrets` on every pull request. All must pass before merge.
 
@@ -49,7 +50,7 @@ tests/
   mission.schema.json   The mission contract (version 2)
   MISSION_TEMPLATE.md   Commented template for a new mission
   examples/             One execution and one decision mission
-scripts/missions/       Mission validator (also runs inside `npm test`)
+scripts/missions/       Mission validator and evidence rubric (tests run inside `npm test`)
 ```
 
 ## Missions
@@ -70,6 +71,20 @@ A mission is a Markdown file in `.groundcrew/missions/`, named after its id (for
 | `status`, `evaluation` | Set by Groundcrew after review; do not edit them |
 
 Execution missions must have `limits`, `creator_prerequisites` and an `## Instructions` section. Decision missions are answered by the creator and need neither. Start a new mission from `.groundcrew/MISSION_TEMPLATE.md` and run `npm run missions:check` before opening the pull request.
+
+### How a mission is evaluated (rule D-04)
+
+`npm run missions:evaluate` applies the evidence rubric to a mission and its pull request. Know it before you write a report: a criterion only counts as met when its evidence exists.
+
+| Evidence kind | Met when | Otherwise |
+| --- | --- | --- |
+| `ci-job` | Every job named in `ref` passed | A failed job → correction needed; not run yet → waiting |
+| `test` | The CI job that runs the file passed (`tests/e2e/` → `e2e`, `tests/integration/` → `db`, other `*.test.ts` → `unit`) | Same as `ci-job`; a file no job runs is never trusted |
+| `creator-check` | The creator commented `/conferido CA<n>` (or `/checked CA<n>`) on the PR | Waiting for the creator |
+| `external-source` | The creator recorded the source with `/conferido CA<n>` | Stays a hypothesis |
+| `decision` | The creator recorded the decision with `/conferido CA<n>` | Waiting for a decision |
+
+The mission's state follows its most serious open item: any failed job → correction needed; then any missing decision → needs decision; then any missing check → needs verification; otherwise approved. The rubric only comments on the pull request; it never edits the mission file.
 
 ## Rules
 
