@@ -9,6 +9,7 @@ import {
   MIN_TIMEOUT_MINUTES,
   extractMission,
   findResult,
+  limitsFromMission,
   planRun,
   runLimits,
   runReport,
@@ -128,5 +129,16 @@ describe("approversByAssociation", () => {
       { user: { login: "stranger" }, author_association: "NONE", body: "/conferido CA3" },
     ];
     expect(approversByAssociation(comments, ["OWNER", "MEMBER", ""]).sort()).toEqual(["member", "owner"]);
+  });
+});
+
+describe("correction cycle", () => {
+  it("reads the limits of the mission a pull request carries", () => {
+    expect(limitsFromMission(example)).toEqual({ missionId: "EX-001", maxTurns: 30, maxCostUsd: 2, timeoutMinutes: 45 });
+  });
+
+  it("titles the report as a correction", () => {
+    const log = [{ type: "result", subtype: "success", total_cost_usd: 0.1, num_turns: 3, duration_ms: 1000 }];
+    expect(runReport({ missionId: "EX-001", log, maxTurns: 30, maxCostUsd: 2, kind: "correction" })).toMatch(/^## Correção da missão EX-001/);
   });
 });

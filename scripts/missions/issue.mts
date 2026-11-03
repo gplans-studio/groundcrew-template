@@ -57,6 +57,16 @@ export function runLimits(limits: { max_turns?: number; max_cost_usd: number }) 
   return { maxTurns, maxCostUsd: limits.max_cost_usd, timeoutMinutes };
 }
 
+/** Limits for a correction run, read from the mission file a pull request carries. */
+export function limitsFromMission(text: string) {
+  const { data } = parseMission(text);
+  const limits = (data.limits ?? {}) as { max_turns?: number; max_cost_usd?: number };
+  return {
+    missionId: String(data.id ?? "?"),
+    ...runLimits({ max_turns: limits.max_turns, max_cost_usd: limits.max_cost_usd ?? 2 }),
+  };
+}
+
 const reject = (problems: string[]): Plan => ({
   action: "reject",
   comment: [
@@ -156,9 +166,11 @@ export function runReport(input: {
   maxCostUsd: number;
   prUrl?: string;
   runUrl?: string;
+  kind?: "execution" | "correction";
 }): string {
   const result = findResult(input.log);
-  const lines = [`## Execução da missão ${input.missionId}`, ""];
+  const heading = input.kind === "correction" ? "Correção da missão" : "Execução da missão";
+  const lines = [`## ${heading} ${input.missionId}`, ""];
   if (!result) {
     lines.push("A execução terminou sem resultado final do agente, então custo e turnos não puderam ser medidos. Veja o log da execução.");
   } else {
