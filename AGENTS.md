@@ -20,12 +20,13 @@ This project was created from the Groundcrew template: Next.js (App Router, Type
 | `npm run dev` | Start the dev server on http://localhost:3000 |
 | `npm run lint` | ESLint |
 | `npm run typecheck` | Generate route types and run `tsc --noEmit` |
-| `npm test` | Unit tests (Vitest, `src/**/*.test.ts`) |
+| `npm test` | Unit tests (Vitest: `src/**/*.test.ts` and `scripts/**/*.test.ts`), including the mission contract checks |
 | `npm run build` | Production build |
 | `npm run test:e2e` | End-to-end tests (Playwright) against the production build; run `npm run build` first |
 | `npm run db:start` / `db:stop` | Start or stop local Supabase (needs Docker); applies migrations on start |
 | `npm run db:reset` | Recreate the local database from migrations |
 | `npm run test:integration` | Database tests against local Supabase; export `npx supabase status -o env` first |
+| `npm run missions:check` | Validate every mission in `.groundcrew/missions/` against the contract |
 
 CI runs `lint`, `typecheck`, `unit`, `build`, `e2e`, `db` and `secrets` on every pull request. All must pass before merge.
 
@@ -43,8 +44,32 @@ supabase/
 tests/
   e2e/                  Playwright specs
   integration/          Tests against a real local Supabase
-.groundcrew/missions/   Mission files written by Groundcrew
+.groundcrew/
+  missions/             Mission files written by Groundcrew (one file per mission)
+  mission.schema.json   The mission contract (version 2)
+  MISSION_TEMPLATE.md   Commented template for a new mission
+  examples/             One execution and one decision mission
+scripts/missions/       Mission validator (also runs inside `npm test`)
 ```
+
+## Missions
+
+A mission is a Markdown file in `.groundcrew/missions/`, named after its id (for example `GC-012-foundation.md`). The YAML front matter is the contract, defined by `.groundcrew/mission.schema.json`; the body holds the instructions for the agent.
+
+| Field | What it means for you |
+| --- | --- |
+| `objective` | The outcome the creator expects, in business language |
+| `context`, `depends_on` | Decisions and missions you must respect; do not reopen them |
+| `executor` | Who runs the mission: `hosted-agent`, `local-agent`, `creator` or `groundcrew` |
+| `scope.authorized` / `scope.out_of_scope` | The only things you may change, and what you must not touch |
+| `acceptance_criteria` | Each criterion and the evidence that proves it (`ci-job`, `test`, `creator-check`, `external-source`, `decision`) |
+| `writes_to_memory` | Facts that become part of the product's memory once the mission is approved |
+| `escalation` | When to stop and ask instead of guessing |
+| `creator_prerequisites` | Human steps that must be done first; if one is `done: false`, stop and report it |
+| `limits` | Token budget, turn limit and hard rules for the run |
+| `status`, `evaluation` | Set by Groundcrew after review; do not edit them |
+
+Execution missions must have `limits`, `creator_prerequisites` and an `## Instructions` section. Decision missions are answered by the creator and need neither. Start a new mission from `.groundcrew/MISSION_TEMPLATE.md` and run `npm run missions:check` before opening the pull request.
 
 ## Rules
 

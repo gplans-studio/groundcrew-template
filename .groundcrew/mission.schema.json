@@ -1,0 +1,376 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gplansstudio.com/groundcrew/mission.schema.json",
+  "title": "Groundcrew mission contract",
+  "description": "Version 2 of the mission contract. Lives in the YAML front matter of each mission file in .groundcrew/missions/.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "id",
+    "title",
+    "stage",
+    "type",
+    "objective",
+    "context",
+    "depends_on",
+    "executor",
+    "scope",
+    "acceptance_criteria",
+    "writes_to_memory",
+    "escalation",
+    "status"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 2,
+      "description": "Contract version. Always 2 for this schema."
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Z]{2,5}-[0-9]{3}$",
+      "description": "Mission id, for example GC-012."
+    },
+    "title": {
+      "type": "string",
+      "minLength": 3
+    },
+    "stage": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 8,
+      "description": "Journey stage: 1 Discovery, 2 Product/MVP, 3 Planning, 4 Foundation, 5 Build, 6 Quality, 7 Launch, 8 Evolution."
+    },
+    "type": {
+      "enum": [
+        "decision",
+        "execution"
+      ],
+      "description": "Decision missions produce product definitions; execution missions produce a pull request."
+    },
+    "objective": {
+      "type": "string",
+      "minLength": 10,
+      "description": "What the creator sees, in business language."
+    },
+    "context": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "Earlier decisions and documents the mission must respect."
+    },
+    "depends_on": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z]{2,5}-[0-9]{3}$"
+      },
+      "description": "Missions that must be approved first. Empty when there are none."
+    },
+    "executor": {
+      "enum": [
+        "creator",
+        "groundcrew",
+        "hosted-agent",
+        "local-agent"
+      ],
+      "description": "Who carries the mission out."
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "authorized",
+        "out_of_scope"
+      ],
+      "properties": {
+        "authorized": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "out_of_scope": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "acceptance_criteria": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/criterion"
+      },
+      "description": "What the result must show. Each criterion names the evidence that proves it (rule D-04)."
+    },
+    "writes_to_memory": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "Facts the mission creates or changes in the Product Memory."
+    },
+    "escalation": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "When to stop and ask the creator."
+    },
+    "creator_prerequisites": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "task",
+          "done"
+        ],
+        "properties": {
+          "task": {
+            "type": "string",
+            "minLength": 1
+          },
+          "done": {
+            "type": "boolean"
+          }
+        }
+      },
+      "description": "Human steps required before the mission can start."
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "max_cost_usd",
+        "rules"
+      ],
+      "properties": {
+        "max_cost_usd": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "max_turns": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "rules": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "description": "Execution limits: token budget and hard rules such as never pushing to main."
+    },
+    "status": {
+      "enum": [
+        "draft",
+        "ready",
+        "running",
+        "in-review",
+        "approved",
+        "correction-needed",
+        "needs-verification",
+        "needs-decision"
+      ]
+    },
+    "evaluation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state",
+        "date",
+        "criteria"
+      ],
+      "properties": {
+        "state": {
+          "enum": [
+            "approved",
+            "correction-needed",
+            "needs-verification",
+            "needs-decision"
+          ]
+        },
+        "date": {
+          "type": "string",
+          "format": "date"
+        },
+        "criteria": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "label"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^CA[0-9]+$"
+              },
+              "label": {
+                "enum": [
+                  "declared",
+                  "corroborated",
+                  "hypothesis",
+                  "unverified"
+                ]
+              },
+              "note": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "description": "Result of evaluating the mission against its evidence."
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "execution"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "creator_prerequisites",
+          "limits"
+        ],
+        "properties": {
+          "executor": {
+            "enum": [
+              "hosted-agent",
+              "local-agent",
+              "creator"
+            ]
+          },
+          "acceptance_criteria": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "evidence": {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "enum": [
+                        "ci-job",
+                        "test",
+                        "creator-check",
+                        "external-source"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "decision"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "executor": {
+            "enum": [
+              "groundcrew",
+              "creator"
+            ]
+          },
+          "acceptance_criteria": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "evidence": {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "enum": [
+                        "decision",
+                        "external-source",
+                        "creator-check"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "criterion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "criterion",
+        "evidence"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^CA[0-9]+$"
+        },
+        "criterion": {
+          "type": "string",
+          "minLength": 3
+        },
+        "evidence": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind"
+          ],
+          "properties": {
+            "kind": {
+              "enum": [
+                "ci-job",
+                "test",
+                "creator-check",
+                "decision",
+                "external-source"
+              ],
+              "description": "ci-job and test are corroborated by CI; creator-check and decision are recorded by the creator; external-source is an interview, dataset or competitor page."
+            },
+            "ref": {
+              "type": "string",
+              "description": "CI job name, test file, or where the creator check or source is recorded."
+            }
+          }
+        }
+      }
+    }
+  }
+}
