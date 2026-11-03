@@ -1,0 +1,79 @@
+# Evidence rubric (rule D-04, GC-008/GC-009): when CI finishes on a pull request
+# that carries a mission file, or when someone comments /conferido on it, the
+# rubric evaluates the mission and keeps one evaluation comment up to date.
+name: Mission evaluation
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+
+jobs:
+  evaluate:
+    if: >-
+      (github.event_name == 'workflow_run' && github.event.workflow_run.event == 'pull_request') ||
+      (github.event_name == 'issue_comment' && github.event.issue.pull_request &&
+       (contains(github.event.comment.body, '/conferido') || contains(github.event.comment.body, '/checked')))
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+      checks: read
+    concurrency:
+      group: mission-evaluation-${{ github.event.issue.number || github.event.workflow_run.head_branch }}
+      cancel-in-progress: false
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PR_FROM_COMMENT: ${{ github.event.issue.number }}
+      HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+      HEAD_OWNER: ${{ github.event.workflow_run.head_repository.owner.login }}
+    steps:
+      # The rubric always runs from the default branch, never from the pull request's code.
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Find the pull request and its mission
+        id: find
+        run: |
+          pr="$PR_FROM_COMMENT"
+          if [ -z "$pr" ]; then
+            pr=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$HEAD_BRANCH" --state open --json number,headRepositoryOwner \
+              --jq "map(select(.headRepositoryOwner.login == \"$HEAD_OWNER\")) | .[0].number // \"\"")
+          fi
+          if [ -z "$pr" ]; then echo "No open pull request for this run."; exit 0; fi
+          sha=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$pr" --jq .head.sha)
+          mission=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$pr/files" --paginate \
+            --jq '.[] | select(.status != "removed") | .filename | select(test("^\\.groundcrew/missions/[^/]+\\.md$"))' | head -n 1)
+          if [ -z "$mission" ]; then echo "Pull request #$pr carries no mission file."; exit 0; fi
+          gh api "repos/$GITHUB_REPOSITORY/contents/$mission?ref=$sha" -H "Accept: application/vnd.github.raw" > "$RUNNER_TEMP/mission.md"
+          gh api "repos/$GITHUB_REPOSITORY/commits/$sha/check-runs?per_page=100" > "$RUNNER_TEMP/checks.json"
+          gh api "repos/$GITHUB_REPOSITORY/issues/$pr/comments" --paginate | jq -s 'add // []' > "$RUNNER_TEMP/comments.json"
+          echo "pr=$pr" >> "$GITHUB_OUTPUT"
+      - name: Apply the rubric
+        if: steps.find.outputs.pr != ''
+        run: |
+          npm run -s missions:evaluate -- --mission "$RUNNER_TEMP/mission.md" --checks "$RUNNER_TEMP/checks.json" \
+            --comments "$RUNNER_TEMP/comments.json" --approver-association OWNER,MEMBER,COLLABORATOR > "$RUNNER_TEMP/evaluation.md"
+          cat "$RUNNER_TEMP/evaluation.md"
+      - name: Post or update the evaluation comment
+        if: steps.find.outputs.pr != ''
+        env:
+          PR: ${{ steps.find.outputs.pr }}
+        run: |
+          existing=$(jq -r '[.[] | select(.user.login == "github-actions[bot]" and (.body | startswith("## Avaliação da missão")))] | last | .id // ""' "$RUNNER_TEMP/comments.json")
+          body=$(jq -Rs '{body: .}' "$RUNNER_TEMP/evaluation.md")
+          if [ -n "$existing" ]; then
+            echo "$body" | gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$existing" --input - > /dev/null
+          else
+            echo "$body" | gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" --input - > /dev/null
+          fi
