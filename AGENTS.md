@@ -87,7 +87,7 @@ Execution missions must have `limits`, `creator_prerequisites` and an `## Instru
 
 The mission's state follows its most serious open item: any failed job → correction needed; then any missing decision → needs decision; then any missing check → needs verification; otherwise approved. The rubric only comments on the pull request; it never edits the mission file.
 
-The **Mission evaluation** workflow runs the rubric for you: whenever CI finishes on a pull request that carries a file in `.groundcrew/missions/`, and whenever someone comments `/conferido`, it updates a single evaluation comment on the pull request. Checks count only from commenters who are owners, members or collaborators of the repository.
+The **Mission evaluation** workflow runs the rubric for you: whenever CI finishes on a pull request that carries a file in `.groundcrew/missions/`, and whenever someone comments `/conferido`, it updates a single evaluation comment on the pull request. Checks count only from commenters with write access to the repository.
 
 ### How a mission runs (hosted cycle)
 

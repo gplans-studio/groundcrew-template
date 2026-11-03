@@ -62,8 +62,16 @@ jobs:
       - name: Apply the rubric
         if: steps.find.outputs.pr != ''
         run: |
+          # A check counts only from someone with write access to the repository. The comment's
+          # author_association is not enough: private organization membership shows up as NONE.
+          approvers=()
+          for login in $(jq -r '[.[] | select(.body | test("(?m)^/(conferido|checked)\\s")) | .user.login] | unique | .[]' "$RUNNER_TEMP/comments.json"); do
+            permission=$(gh api "repos/$GITHUB_REPOSITORY/collaborators/$login/permission" --jq .permission 2>/dev/null || echo none)
+            echo "$login: $permission"
+            case "$permission" in admin|maintain|write) approvers+=(--approver "$login") ;; esac
+          done
           npm run -s missions:evaluate -- --mission "$RUNNER_TEMP/mission.md" --checks "$RUNNER_TEMP/checks.json" \
-            --comments "$RUNNER_TEMP/comments.json" --approver-association OWNER,MEMBER,COLLABORATOR > "$RUNNER_TEMP/evaluation.md"
+            --comments "$RUNNER_TEMP/comments.json" "${approvers[@]}" > "$RUNNER_TEMP/evaluation.md"
           cat "$RUNNER_TEMP/evaluation.md"
       - name: Post or update the evaluation comment
         if: steps.find.outputs.pr != ''
