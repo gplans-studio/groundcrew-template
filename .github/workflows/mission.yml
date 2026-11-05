@@ -102,7 +102,7 @@ jobs:
           claude_args: >-
             --max-turns ${{ needs.plan.outputs.max_turns }}
             --max-budget-usd ${{ needs.plan.outputs.max_cost_usd }}
-            --allowedTools "Read,Write,Edit,Glob,Grep,Bash(npm run:*),Bash(npm test:*),Bash(npx:*),Bash(node:*),Bash(git status:*),Bash(git diff:*),Bash(git add:*),Bash(git commit:*),Bash(git push -u origin ${{ needs.plan.outputs.branch }}),Bash(git log:*),Bash(gh pr create:*),Bash(gh pr view:*),Bash(ls:*),Bash(mkdir:*)"
+            --allowedTools "Read,Write,Edit,Glob,Grep,Bash(npm run:*),Bash(npm test:*),Bash(npx:*),Bash(node:*),Bash(git status:*),Bash(git diff:*),Bash(git add:*),Bash(git rm:*),Bash(git mv:*),Bash(git commit:*),Bash(git push -u origin ${{ needs.plan.outputs.branch }}),Bash(git log:*),Bash(gh pr create:*),Bash(gh pr view:*),Bash(ls:*),Bash(mkdir:*)"
       - name: Find the pull request
         id: pr
         if: always()
