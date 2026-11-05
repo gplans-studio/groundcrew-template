@@ -102,6 +102,8 @@ The creator opens an issue whose body is the mission file and applies the `groun
 
 To ask for a correction, comment on the pull request mentioning `@claude` with what to fix. The **Mission correction** workflow runs Claude on the same branch, within the same mission `limits`, and records the correction's cost, turns and duration on the pull request. CI and the evaluation then run again on the new commits.
 
+When a mission asks the creator to check screens, save them from the e2e tests with `page.screenshot({ path: "test-results/screens/<name>.png", fullPage: true })`. CI attaches that folder to the run as the `screens` artifact, which the creator can open without a deployed preview.
+
 If you are the hosted agent: you cannot change files in `.github/workflows/`, and the `e2e` and `db` jobs only run in CI.
 
 ## Rules

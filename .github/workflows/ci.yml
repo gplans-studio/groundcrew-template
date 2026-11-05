@@ -78,6 +78,15 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - run: npm run build
       - run: npm run test:e2e
+      # Screens saved by the e2e tests in test-results/screens/, so the creator can
+      # check a mission's screens without a deployed preview.
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: screens
+          path: test-results/screens/
+          if-no-files-found: ignore
+          retention-days: 30
 
   db:
     runs-on: ubuntu-latest
