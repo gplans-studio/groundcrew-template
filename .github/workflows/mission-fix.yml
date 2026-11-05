@@ -1,0 +1,97 @@
+# Correction cycle (GC-010): a comment that mentions @claude on a mission's
+# pull request asks the agent to fix it on the same branch, within the
+# mission's limits. The cost of each correction is recorded on the pull request.
+name: Mission correction
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    if: github.event.issue.pull_request && contains(github.event.comment.body, '@claude')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      mission_id: ${{ steps.limits.outputs.mission_id }}
+      max_turns: ${{ steps.limits.outputs.max_turns }}
+      max_cost_usd: ${{ steps.limits.outputs.max_cost_usd }}
+      timeout_minutes: ${{ steps.limits.outputs.timeout_minutes }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PR: ${{ github.event.issue.number }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Find the mission on the pull request
+        id: find
+        run: |
+          sha=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR" --jq .head.sha)
+          mission=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR/files" --paginate \
+            --jq '.[] | select(.status != "removed") | .filename | select(test("^\\.groundcrew/missions/[^/]+\\.md$"))' | head -n 1)
+          if [ -z "$mission" ]; then echo "Pull request #$PR carries no mission file."; exit 0; fi
+          gh api "repos/$GITHUB_REPOSITORY/contents/$mission?ref=$sha" -H "Accept: application/vnd.github.raw" > "$RUNNER_TEMP/mission.md"
+          echo "found=true" >> "$GITHUB_OUTPUT"
+      - id: limits
+        if: steps.find.outputs.found == 'true'
+        run: node scripts/missions/issue-cli.mts limits --mission "$RUNNER_TEMP/mission.md"
+
+  fix:
+    needs: plan
+    if: needs.plan.outputs.mission_id != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ fromJSON(needs.plan.outputs.timeout_minutes) }}
+    concurrency:
+      group: mission-fix-${{ github.event.issue.number }}
+      cancel-in-progress: false
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Correct the mission with Claude
+        id: agent
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          additional_permissions: |
+            actions: read
+          claude_args: >-
+            --max-turns ${{ needs.plan.outputs.max_turns }}
+            --max-budget-usd ${{ needs.plan.outputs.max_cost_usd }}
+            --append-system-prompt "You are correcting Groundcrew mission ${{ needs.plan.outputs.mission_id }}. Follow AGENTS.md and the mission file in .groundcrew/missions/; stay in its scope and do not edit the mission file. Before committing, run npm run lint, npm run typecheck and npm test. After pushing, update the pull request report if the correction changed what it says."
+            --allowedTools "Bash(npm run:*),Bash(npm test:*),Bash(npx:*),Bash(node:*),Bash(gh pr view:*),Bash(gh pr edit:*),mcp__github_ci__get_ci_status,mcp__github_ci__get_workflow_run_details,mcp__github_ci__download_job_log"
+      - name: Record the correction's cost on the pull request
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.issue.number }}
+          MISSION_ID: ${{ needs.plan.outputs.mission_id }}
+          MAX_TURNS: ${{ needs.plan.outputs.max_turns }}
+          MAX_COST: ${{ needs.plan.outputs.max_cost_usd }}
+          EXECUTION_FILE: ${{ steps.agent.outputs.execution_file }}
+        run: |
+          node scripts/missions/issue-cli.mts report --kind correction \
+            --mission-id "$MISSION_ID" --max-turns "$MAX_TURNS" --max-cost "$MAX_COST" \
+            --execution-file "$EXECUTION_FILE" \
+            --pr-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/pull/$PR" \
+            --run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" > "$RUNNER_TEMP/report.md"
+          gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" --body-file "$RUNNER_TEMP/report.md"

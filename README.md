@@ -28,7 +28,7 @@ To deploy, import the repository in Vercel and set the same two variables with t
 
 ## Running missions with Claude
 
-Open an issue whose body is a mission file (see `.groundcrew/MISSION_TEMPLATE.md`) and apply the `groundcrew` label. Claude implements it on a branch, opens a pull request, and the evidence rubric comments its evaluation when CI finishes. This needs the [Claude GitHub App](https://github.com/apps/claude) on the repository and an `ANTHROPIC_API_KEY` secret; without the secret the run is skipped and nothing is charged. Details in [`AGENTS.md`](AGENTS.md#how-a-mission-runs-hosted-cycle).
+Open an issue whose body is a mission file (see `.groundcrew/MISSION_TEMPLATE.md`) and apply the `groundcrew` label. Claude implements it on a branch, opens a pull request, and the evidence rubric comments its evaluation when CI finishes. To ask for a fix, comment `@claude` with the request on the pull request. This needs the [Claude GitHub App](https://github.com/apps/claude) on the repository and an `ANTHROPIC_API_KEY` secret; without the secret the run is skipped and nothing is charged. Details in [`AGENTS.md`](AGENTS.md#how-a-mission-runs-hosted-cycle).
 
 ## Commands
 

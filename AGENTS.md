@@ -29,6 +29,7 @@ This project was created from the Groundcrew template: Next.js (App Router, Type
 | `npm run missions:check` | Validate every mission in `.groundcrew/missions/` against the contract |
 | `npm run missions:evaluate -- --mission <file> --checks <file> [--comments <file>] --approver <login>` | Apply the evidence rubric to a mission and its PR (see below) |
 | `node scripts/missions/issue-cli.mts plan` | Check the mission in `ISSUE_BODY` and print the run plan (used by the Mission workflow) |
+| `node scripts/missions/issue-cli.mts limits --mission <file>` | Print a mission's turn limit, cost cap and timeout (used by the Mission correction workflow) |
 
 CI runs `lint`, `typecheck`, `unit`, `build`, `e2e`, `db` and `secrets` on every pull request. All must pass before merge.
 
@@ -98,6 +99,8 @@ The creator opens an issue whose body is the mission file and applies the `groun
 3. Runs Claude (`anthropics/claude-code-action`) with the mission's `limits`: `max_turns` (default 40, at most 100) and `max_cost_usd` as a hard spending cap. The job timeout follows the turn limit (15 to 60 minutes).
 4. The agent commits the mission file with its work, pushes the branch and opens the pull request with the report below.
 5. The workflow records cost, turns and duration on the issue.
+
+To ask for a correction, comment on the pull request mentioning `@claude` with what to fix. The **Mission correction** workflow runs Claude on the same branch, within the same mission `limits`, and records the correction's cost, turns and duration on the pull request. CI and the evaluation then run again on the new commits.
 
 If you are the hosted agent: you cannot change files in `.github/workflows/`, and the `e2e` and `db` jobs only run in CI.
 

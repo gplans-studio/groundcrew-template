@@ -7,14 +7,18 @@
  *     mission file under .groundcrew/missions/. With --comment-file, saves the
  *     comment for a skipped or rejected mission.
  *
+ *   node scripts/missions/issue-cli.mts limits --mission <file>
+ *     Prints the turn limit, cost cap and timeout of a mission file and, inside
+ *     GitHub Actions, writes them to GITHUB_OUTPUT (used by the correction cycle).
+ *
  *   node scripts/missions/issue-cli.mts report --mission-id <id> --max-turns <n>
  *     --max-cost <usd> [--execution-file <file>] [--pr-url <url>] [--run-url <url>]
- *     Prints the cost report for the issue.
+ *     [--kind correction] Prints the cost report (on the issue, or on the PR for a correction).
  */
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { parseArgs } from "node:util";
-import { planRun, runReport } from "./issue.mts";
+import { limitsFromMission, planRun, runReport } from "./issue.mts";
 
 function plan(args: string[]) {
   const { values } = parseArgs({
@@ -51,6 +55,22 @@ function plan(args: string[]) {
   console.log(JSON.stringify(outputs, null, 2));
 }
 
+function limits(args: string[]) {
+  const { values } = parseArgs({ args, options: { mission: { type: "string" } } });
+  if (!values.mission) throw new Error("limits needs --mission <file>");
+  const result = limitsFromMission(readFileSync(values.mission, "utf8"));
+  const outputs = {
+    mission_id: result.missionId,
+    max_turns: result.maxTurns,
+    max_cost_usd: result.maxCostUsd,
+    timeout_minutes: result.timeoutMinutes,
+  };
+  if (process.env.GITHUB_OUTPUT) {
+    appendFileSync(process.env.GITHUB_OUTPUT, Object.entries(outputs).map(([k, v]) => `${k}=${v}\n`).join(""));
+  }
+  console.log(JSON.stringify(outputs, null, 2));
+}
+
 function report(args: string[]) {
   const { values } = parseArgs({
     args,
@@ -61,6 +81,7 @@ function report(args: string[]) {
       "execution-file": { type: "string" },
       "pr-url": { type: "string" },
       "run-url": { type: "string" },
+      kind: { type: "string" },
     },
   });
   const file = values["execution-file"];
@@ -80,14 +101,16 @@ function report(args: string[]) {
       maxCostUsd: Number(values["max-cost"]),
       prUrl: values["pr-url"] || undefined,
       runUrl: values["run-url"] || undefined,
+      kind: values.kind === "correction" ? "correction" : "execution",
     }),
   );
 }
 
 const [command, ...rest] = process.argv.slice(2);
 if (command === "plan") plan(rest);
+else if (command === "limits") limits(rest);
 else if (command === "report") report(rest);
 else {
-  console.error("Usage: issue-cli.mts plan|report [options]");
+  console.error("Usage: issue-cli.mts plan|limits|report [options]");
   process.exit(2);
 }
