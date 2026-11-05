@@ -61,7 +61,11 @@ jobs:
       id-token: write
       actions: read
     steps:
+      # Without persisted credentials, the agent pushes with the Claude app token,
+      # so CI runs on its commits without waiting for approval (found in GC-028).
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
