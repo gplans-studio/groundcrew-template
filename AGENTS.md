@@ -104,7 +104,7 @@ To ask for a correction, comment on the pull request mentioning `@claude` with w
 
 When a mission asks the creator to check screens, save them from the e2e tests with `page.screenshot({ path: "test-results/screens/<name>.png", fullPage: true })`. CI attaches that folder to the run as the `screens` artifact, which the creator can open without a deployed preview.
 
-If you are the hosted agent: you cannot change files in `.github/workflows/`, and the `e2e` and `db` jobs only run in CI.
+If you are the hosted agent: local Supabase (with its test mailbox) is already running and its settings are in the environment, so run `npm run test:integration`, `npm run build` and `npm run test:e2e` before handing over, like CI does. You cannot change files in `.github/workflows/`.
 
 ## Rules
 

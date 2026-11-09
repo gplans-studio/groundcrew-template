@@ -71,6 +71,29 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      # The agent runs the same suites as CI before handing over: local Supabase
+      # with its test mailbox, and the app settings pointing to it.
+      - name: Start local Supabase with the test mailbox
+        run: |
+          # Retry: GitHub runners sometimes report the database port 54322 as
+          # already in use on the first start (seen in GC-012 and SB-002).
+          for attempt in 1 2 3; do
+            npx supabase start -x realtime,storage-api,imgproxy,postgres-meta,studio,edge-runtime,logflare,vector,supavisor && exit 0
+            echo "Supabase did not start (attempt $attempt); stopping and retrying"
+            npx supabase stop --no-backup || true
+            sleep 10
+          done
+          exit 1
+      - name: Export local Supabase settings for the agent
+        run: |
+          npx supabase status -o env | sed -E 's/^([A-Z_]+)="(.*)"$/\1=\2/' > "$RUNNER_TEMP/supabase.env"
+          cat "$RUNNER_TEMP/supabase.env" >> "$GITHUB_ENV"
+          set -a; . "$RUNNER_TEMP/supabase.env"; set +a
+          {
+            echo "NEXT_PUBLIC_SUPABASE_URL=$API_URL"
+            echo "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=${PUBLISHABLE_KEY:-$ANON_KEY}"
+          } >> "$GITHUB_ENV"
       - name: Put the mission on its branch
         env:
           ISSUE_BODY: ${{ github.event.issue.body }}
@@ -83,6 +106,10 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Commit as the Claude app's bot user (the action's default id is
+          # github-actions[bot]'s, which makes GitHub hold the PR's CI for approval).
+          bot_id: "209825114"
+          bot_name: "claude[bot]"
           prompt: |
             You are the hosted agent of Groundcrew. Carry out mission ${{ needs.plan.outputs.mission_id }}
             ("${{ needs.plan.outputs.title }}"), requested in issue #${{ github.event.issue.number }} of ${{ github.repository }}.
@@ -90,9 +117,10 @@ jobs:
             1. Read AGENTS.md and follow every rule in it. Then read the mission file at ${{ needs.plan.outputs.mission_path }}.
                The mission file is the contract: stay inside scope.authorized, respect limits.rules, and do not edit the file.
             2. You are already on branch ${{ needs.plan.outputs.branch }}. Work only on this branch; never push to main.
-            3. Implement the mission with tests for each acceptance criterion. Before committing, run
-               npm run lint, npm run typecheck, npm test and npm run missions:check, and fix what fails.
-               You cannot run the e2e and db jobs here; CI runs them on the pull request.
+            3. Implement the mission with tests for each acceptance criterion. Before committing, run every suite CI runs
+               and fix what fails: npm run lint, npm run typecheck, npm test, npm run missions:check,
+               npm run test:integration (local Supabase is already running), then npm run build and npm run test:e2e.
+               Old tests that break are part of the job: fix the cause, never weaken or delete a test to make it pass.
             4. Commit your work together with the mission file, push the branch with
                git push -u origin ${{ needs.plan.outputs.branch }}, then open the pull request with
                gh pr create --base main --head ${{ needs.plan.outputs.branch }} --title "${{ needs.plan.outputs.mission_id }}: ${{ needs.plan.outputs.title }}" --body-file <report>
@@ -103,6 +131,9 @@ jobs:
             --max-turns ${{ needs.plan.outputs.max_turns }}
             --max-budget-usd ${{ needs.plan.outputs.max_cost_usd }}
             --allowedTools "Read,Write,Edit,Glob,Grep,Bash(npm run:*),Bash(npm test:*),Bash(npx:*),Bash(node:*),Bash(git status:*),Bash(git diff:*),Bash(git add:*),Bash(git rm:*),Bash(git mv:*),Bash(git commit:*),Bash(git push -u origin ${{ needs.plan.outputs.branch }}),Bash(git log:*),Bash(gh pr create:*),Bash(gh pr view:*),Bash(ls:*),Bash(mkdir:*)"
+      - name: Stop local Supabase
+        if: always()
+        run: npx supabase stop --no-backup
       - name: Find the pull request
         id: pr
         if: always()
