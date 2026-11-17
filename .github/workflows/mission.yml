@@ -119,6 +119,9 @@ jobs:
           ANTHROPIC_BASE_URL: ${{ steps.groundcrew.outputs.base_url || 'https://api.anthropic.com' }}
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY || steps.groundcrew.outputs.token }}
+          # GC-043: the Run button in Groundcrew adds the label through the
+          # Groundcrew GitHub App, and the action refuses bot actors by default.
+          allowed_bots: groundcrew-by-g-plans
           # Commit as the Claude app's bot user (the action's default id is
           # github-actions[bot]'s, which makes GitHub hold the PR's CI for approval).
           bot_id: "209825114"
