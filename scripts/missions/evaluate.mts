@@ -61,6 +61,9 @@ export function jobForTest(path: string): string | undefined {
   return undefined;
 }
 
+/** The CI jobs that run tests, for a test criterion that names no file. */
+export const TEST_JOBS = ["unit", "e2e", "db"];
+
 /** Splits a ref such as "lint typecheck" or "lint, typecheck" into job names. */
 function jobNames(ref: string | undefined): string[] {
   return (ref ?? "").split(/[\s,]+/).filter(Boolean);
@@ -103,7 +106,10 @@ export function evaluateCriterion(
     case "ci-job":
       return fromJobs(base, jobNames(ref), checks, "CI");
     case "test": {
-      const job = ref ? jobForTest(ref) : undefined;
+      // A mission written in Groundcrew names the evidence kind but not the
+      // test file, which the agent only writes later: every test job counts.
+      if (!ref) return fromJobs(base, TEST_JOBS, checks, "testes automáticos");
+      const job = jobForTest(ref);
       if (!job) {
         return {
           ...base,

@@ -136,3 +136,22 @@ describe("the execution example end to end", () => {
     expect(toMarkdown("EX-001", after)).toContain("**Classificação: aprovada**");
   });
 });
+
+describe("a test criterion without a file (missions written in Groundcrew)", () => {
+  const criterion = { id: "CA1", criterion: "Teste visual", evidence: { kind: "test" as const } };
+
+  it("is met when every test job passed", () => {
+    const result = evaluateCriterion(criterion, { unit: "success", e2e: "success", db: "success" }, new Set());
+    expect(result.outcome).toBe("met");
+  });
+
+  it("needs a correction when one of the test jobs failed", () => {
+    const result = evaluateCriterion(criterion, { unit: "success", e2e: "failure", db: "success" }, new Set());
+    expect(result.outcome).toBe("failed");
+  });
+
+  it("waits while a test job has not run", () => {
+    const result = evaluateCriterion(criterion, { unit: "success" }, new Set());
+    expect(result.outcome).not.toBe("met");
+  });
+});
