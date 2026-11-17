@@ -60,6 +60,8 @@ jobs:
       issues: write
       id-token: write
       actions: read
+    env:
+      OWN_KEY: ${{ secrets.ANTHROPIC_API_KEY != '' }}
     steps:
       # Keep the checkout credentials: the action fetches the pull request branch
       # with them before switching git to the Claude app token (GC-013 found that
@@ -93,11 +95,32 @@ jobs:
             echo "NEXT_PUBLIC_SUPABASE_URL=$API_URL"
             echo "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=${PUBLISHABLE_KEY:-$ANON_KEY}"
           } >> "$GITHUB_ENV"
+      # D-87: without its own key, the correction runs through Groundcrew too,
+      # with the run token of the mission's issue (the "Refs #N" of the report).
+      - name: Find the mission's issue
+        id: issue
+        if: env.OWN_KEY != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.issue.number }}
+        run: |
+          number=$(gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json body --jq .body | grep -oE 'Refs #[0-9]+' | head -n 1 | tr -dc '0-9')
+          if [ -z "$number" ]; then echo "::error::The pull request report has no 'Refs #<issue>' line."; exit 1; fi
+          echo "number=$number" >> "$GITHUB_OUTPUT"
+      - name: Get a run token from Groundcrew
+        id: groundcrew
+        if: env.OWN_KEY != 'true'
+        env:
+          ISSUE: ${{ steps.issue.outputs.number }}
+          GROUNDCREW_URL: ${{ vars.GROUNDCREW_URL || 'https://groundcrew-staging.vercel.app' }}
+        run: scripts/missions/groundcrew-token.sh
       - name: Correct the mission with Claude
         id: agent
         uses: anthropics/claude-code-action@v1
+        env:
+          ANTHROPIC_BASE_URL: ${{ steps.groundcrew.outputs.base_url || 'https://api.anthropic.com' }}
         with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY || steps.groundcrew.outputs.token }}
           bot_id: "209825114"
           bot_name: "claude[bot]"
           # D-78: the mission pull requests are opened by the bot, so the action

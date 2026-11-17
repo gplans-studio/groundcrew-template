@@ -41,7 +41,8 @@ jobs:
       - id: plan
         env:
           ISSUE_BODY: ${{ github.event.issue.body }}
-          HAS_KEY: ${{ secrets.ANTHROPIC_API_KEY != '' }}
+          # D-87: without its own ANTHROPIC_API_KEY, the run goes through Groundcrew.
+          HAS_KEY: "true"
         run: node scripts/missions/issue-cli.mts plan --comment-file "$RUNNER_TEMP/comment.md"
       - name: Explain why the mission did not run
         if: steps.plan.outputs.action != 'run'
@@ -64,6 +65,7 @@ jobs:
     env:
       BRANCH: ${{ needs.plan.outputs.branch }}
       MISSION_PATH: ${{ needs.plan.outputs.mission_path }}
+      OWN_KEY: ${{ secrets.ANTHROPIC_API_KEY != '' }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -101,11 +103,22 @@ jobs:
         run: |
           git checkout -b "$BRANCH"
           node scripts/missions/issue-cli.mts plan --write > /dev/null
+      # D-87: a repository without its own key gets a short-lived run token from
+      # Groundcrew, and Claude is called through the Groundcrew proxy.
+      - name: Get a run token from Groundcrew
+        id: groundcrew
+        if: env.OWN_KEY != 'true'
+        env:
+          ISSUE: ${{ github.event.issue.number }}
+          GROUNDCREW_URL: ${{ vars.GROUNDCREW_URL || 'https://groundcrew-staging.vercel.app' }}
+        run: scripts/missions/groundcrew-token.sh
       - name: Run the mission with Claude
         id: agent
         uses: anthropics/claude-code-action@v1
+        env:
+          ANTHROPIC_BASE_URL: ${{ steps.groundcrew.outputs.base_url || 'https://api.anthropic.com' }}
         with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY || steps.groundcrew.outputs.token }}
           # Commit as the Claude app's bot user (the action's default id is
           # github-actions[bot]'s, which makes GitHub hold the PR's CI for approval).
           bot_id: "209825114"
@@ -165,6 +178,20 @@ jobs:
         run: |
           url=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$BRANCH" --state all --json url --jq '.[0].url // ""')
           echo "url=$url" >> "$GITHUB_OUTPUT"
+      - name: Explain a refused run token
+        if: failure() && steps.groundcrew.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ github.event.issue.number }}
+          REASON: ${{ steps.groundcrew.outputs.reason }}
+        run: |
+          {
+            echo "## A missão não rodou"
+            echo
+            echo "O Groundcrew recusou o token da execução (${REASON:-sem resposta}). Nenhum token da IA foi gasto."
+            echo "Confira se este repositório foi criado pelo Groundcrew e se esta issue foi aberta por ele."
+          } > "$RUNNER_TEMP/refused.md"
+          gh issue comment "$ISSUE" --repo "$GITHUB_REPOSITORY" --body-file "$RUNNER_TEMP/refused.md"
       - name: Record cost, turns and duration on the issue
         if: always()
         env:
