@@ -137,6 +137,8 @@ jobs:
                and fix what fails: npm run lint, npm run typecheck, npm test, npm run missions:check,
                npm run test:integration (local Supabase is already running), then npm run build and npm run test:e2e.
                Old tests that break are part of the job: fix the cause, never weaken or delete a test to make it pass.
+               Run every command in the foreground and wait for it to finish: never start a command in the background,
+               and never end your turn to wait for a notification. The run ends when your turn ends (GC-045).
             4. Commit your work together with the mission file, push the branch with
                git push -u origin ${{ needs.plan.outputs.branch }}, then open the pull request with
                gh pr create --base main --head ${{ needs.plan.outputs.branch }} --title "${{ needs.plan.outputs.mission_id }}: ${{ needs.plan.outputs.title }}" --body-file <report>
