@@ -208,3 +208,13 @@ jobs:
             --execution-file "$EXECUTION_FILE" --pr-url "$PR_URL" \
             --run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" > "$RUNNER_TEMP/report.md"
           gh issue comment "$ISSUE" --repo "$GITHUB_REPOSITORY" --body-file "$RUNNER_TEMP/report.md"
+      # D-91: tell Groundcrew the run ended, with the same OIDC proof as the
+      # run token. Only for runs that went through the Groundcrew proxy.
+      - name: Tell Groundcrew the run ended
+        if: always() && steps.groundcrew.outcome == 'success'
+        env:
+          GROUNDCREW_URL: ${{ vars.GROUNDCREW_URL || 'https://groundcrew-staging.vercel.app' }}
+          AGENT_OUTCOME: ${{ steps.agent.outcome }}
+          EXECUTION_FILE: ${{ steps.agent.outputs.execution_file }}
+          PR_URL: ${{ steps.pr.outputs.url }}
+        run: scripts/missions/groundcrew-finish.sh
