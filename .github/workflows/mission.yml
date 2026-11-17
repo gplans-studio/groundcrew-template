@@ -131,9 +131,32 @@ jobs:
             --max-turns ${{ needs.plan.outputs.max_turns }}
             --max-budget-usd ${{ needs.plan.outputs.max_cost_usd }}
             --allowedTools "Read,Write,Edit,Glob,Grep,Bash(npm run:*),Bash(npm test:*),Bash(npx:*),Bash(node:*),Bash(git status:*),Bash(git diff:*),Bash(git add:*),Bash(git rm:*),Bash(git mv:*),Bash(git commit:*),Bash(git push -u origin ${{ needs.plan.outputs.branch }}),Bash(git log:*),Bash(gh pr create:*),Bash(gh pr view:*),Bash(ls:*),Bash(mkdir:*)"
+      - name: Save the agent transcript
+        if: always() && steps.agent.outputs.execution_file != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: agent-transcript
+          path: ${{ steps.agent.outputs.execution_file }}
+          retention-days: 14
       - name: Stop local Supabase
         if: always()
         run: npx supabase stop --no-backup
+      # If the agent stopped without pushing (GC-015), keep its work on the
+      # mission branch so it can be reviewed or continued instead of lost.
+      - name: Keep work the agent did not push
+        if: always()
+        run: |
+          if git ls-remote --exit-code --heads origin "$BRANCH" > /dev/null; then exit 0; fi
+          git add -A
+          others=$(git diff --cached --name-only | grep -vxF "$MISSION_PATH" || true)
+          if [ -z "$others" ] && [ "$(git rev-list --count origin/main..HEAD)" -eq 0 ]; then
+            echo "Nothing to keep beyond the mission file."
+            exit 0
+          fi
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit --allow-empty -m "wip: work left by the agent without a pull request"
+          git push -u origin "$BRANCH"
+          echo "::warning::The agent did not push; its work was kept on $BRANCH without a pull request."
       - name: Find the pull request
         id: pr
         if: always()

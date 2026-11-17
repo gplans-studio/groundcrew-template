@@ -8,6 +8,8 @@ import {
   MAX_TURNS_CAP,
   MIN_TIMEOUT_MINUTES,
   extractMission,
+  deniedCalls,
+  outcomeOf,
   findResult,
   limitsFromMission,
   planRun,
@@ -81,6 +83,12 @@ describe("runLimits (CA2)", () => {
     expect(runLimits({ max_turns: 2, max_cost_usd: 1 }).timeoutMinutes).toBe(MIN_TIMEOUT_MINUTES);
     expect(runLimits({ max_turns: 100, max_cost_usd: 1 }).timeoutMinutes).toBe(MAX_TIMEOUT_MINUTES);
   });
+
+  it("allows the 120 to 130 turns a 5 to 6 hour mission takes (GC-036, GC-037)", () => {
+    expect(DEFAULT_MAX_TURNS).toBe(120);
+    expect(MAX_TURNS_CAP).toBe(150);
+    expect(runLimits({ max_turns: 150, max_cost_usd: 5 })).toEqual({ maxTurns: 150, maxCostUsd: 5, timeoutMinutes: MAX_TIMEOUT_MINUTES });
+  });
 });
 
 describe("helpers", () => {
@@ -140,5 +148,62 @@ describe("correction cycle", () => {
   it("titles the report as a correction", () => {
     const log = [{ type: "result", subtype: "success", total_cost_usd: 0.1, num_turns: 3, duration_ms: 1000 }];
     expect(runReport({ missionId: "EX-001", log, maxTurns: 30, maxCostUsd: 2, kind: "correction" })).toMatch(/^## Correção da missão EX-001/);
+  });
+});
+
+describe("diagnosing a run without a pull request (GC-015)", () => {
+  const log = [
+    {
+      type: "result",
+      subtype: "success",
+      total_cost_usd: 4.12,
+      num_turns: 104,
+      duration_ms: 769000,
+      result: "I could not push the branch.",
+      permission_denials: [
+        { tool_name: "Bash", tool_input: { command: "git push origin gc-015 --force" } },
+        { tool_name: "WebFetch", tool_input: { url: "https://example.com" } },
+      ],
+    },
+  ];
+
+  it("lists the blocked calls", () => {
+    expect(deniedCalls(findResult(log))).toEqual([
+      "Bash: git push origin gc-015 --force",
+      'WebFetch: {"url":"https://example.com"}',
+    ]);
+  });
+
+  it("shows the blocked calls and the agent's last message when no pull request was opened", () => {
+    const text = runReport({ missionId: "GC-015", log, maxTurns: 150, maxCostUsd: 6 });
+    expect(text).toContain("Comandos bloqueados pelas permissões do ciclo (2):");
+    expect(text).toContain("- `Bash: git push origin gc-015 --force`");
+    expect(text).toContain("> I could not push the branch.");
+    expect(text).toContain("Nenhum pull request foi aberto.");
+  });
+
+  it("leaves the last message out when the pull request exists", () => {
+    const text = runReport({ missionId: "GC-015", log, maxTurns: 150, maxCostUsd: 6, prUrl: "https://x/pull/1" });
+    expect(text).not.toContain("Última mensagem do agente");
+  });
+});
+
+describe("runs the API stopped (GC-015)", () => {
+  const ended = (result: string) => ({ type: "result" as const, subtype: "success", result });
+
+  it("names the missing balance, the monthly limit and other API errors", () => {
+    expect(outcomeOf(ended("Credit balance is too low"))).toBe("parou por falta de saldo no Claude Console");
+    expect(
+      outcomeOf(ended("API Error: 400 You have reached your specified API usage limits. You will regain access on 2026-12-01.")),
+    ).toBe("parou no limite de gasto mensal do Claude Console");
+    expect(outcomeOf(ended("API Error: 529 Overloaded"))).toBe("parou por erro da API da Anthropic");
+    expect(outcomeOf(ended("Done. Opened the pull request."))).toBe("concluída");
+  });
+
+  it("puts the reason in the report", () => {
+    const log = [{ type: "result", subtype: "success", total_cost_usd: 0.5, num_turns: 12, duration_ms: 72000, result: "Credit balance is too low" }];
+    expect(runReport({ missionId: "GC-015", log, maxTurns: 150, maxCostUsd: 6 })).toContain(
+      "Resultado: parou por falta de saldo no Claude Console.",
+    );
   });
 });

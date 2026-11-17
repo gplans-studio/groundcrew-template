@@ -100,6 +100,12 @@ jobs:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           bot_id: "209825114"
           bot_name: "claude[bot]"
+          # D-78: the mission pull requests are opened by the bot, so the action
+          # treats them as untrusted and blocks npm, npx and node, and the
+          # correction could not run the suites (GC-015). The branch holds only
+          # our agent's work, CI already runs it with npm, and only commenters
+          # with write access trigger this workflow.
+          restrict_untrusted_prs: false
           additional_permissions: |
             actions: read
           claude_args: >-
@@ -107,6 +113,13 @@ jobs:
             --max-budget-usd ${{ needs.plan.outputs.max_cost_usd }}
             --append-system-prompt "You are correcting Groundcrew mission ${{ needs.plan.outputs.mission_id }}. Follow AGENTS.md and the mission file in .groundcrew/missions/; stay in its scope and do not edit the mission file. Before committing, run every suite CI runs and fix what fails: npm run lint, npm run typecheck, npm test, npm run test:integration (local Supabase is running), npm run build and npm run test:e2e. Never weaken or delete a test to make it pass. After pushing, update the pull request report if the correction changed what it says."
             --allowedTools "Bash(npm run:*),Bash(npm test:*),Bash(npx:*),Bash(node:*),Bash(gh pr view:*),Bash(gh pr edit:*),mcp__github_ci__get_ci_status,mcp__github_ci__get_workflow_run_details,mcp__github_ci__download_job_log"
+      - name: Save the agent transcript
+        if: always() && steps.agent.outputs.execution_file != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: agent-transcript
+          path: ${{ steps.agent.outputs.execution_file }}
+          retention-days: 14
       - name: Stop local Supabase
         if: always()
         run: npx supabase stop --no-backup

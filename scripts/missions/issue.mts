@@ -5,8 +5,8 @@
  */
 import { parseMission, validateMission } from "./validate.mts";
 
-export const DEFAULT_MAX_TURNS = 40;
-export const MAX_TURNS_CAP = 100;
+export const DEFAULT_MAX_TURNS = 120;
+export const MAX_TURNS_CAP = 150;
 export const MIN_TIMEOUT_MINUTES = 15;
 export const MAX_TIMEOUT_MINUTES = 60;
 
@@ -139,7 +139,19 @@ type ResultEvent = {
   num_turns?: number;
   duration_ms?: number;
   is_error?: boolean;
+  result?: string;
+  permission_denials?: { tool_name?: string; tool_input?: Record<string, unknown> }[];
 };
+
+/** One line per tool call the run's permissions blocked, so a stuck run can be diagnosed from the issue. */
+export function deniedCalls(result: ResultEvent | undefined): string[] {
+  return (result?.permission_denials ?? []).map((denial) => {
+    const input = denial.tool_input ?? {};
+    const detail = typeof input.command === "string" ? input.command : JSON.stringify(input);
+    const oneLine = detail.replace(/\s+/g, " ").trim();
+    return `${denial.tool_name ?? "?"}: ${oneLine.length > 160 ? `${oneLine.slice(0, 157)}...` : oneLine}`;
+  });
+}
 
 /** The final result event of a Claude Code execution log, if the run got that far. */
 export function findResult(log: unknown): ResultEvent | undefined {
@@ -157,6 +169,19 @@ const outcomeText: Record<string, string> = {
   error_max_budget_usd: "parou no teto de custo",
   error_during_execution: "falhou durante a execução",
 };
+
+/**
+ * How the run ended. A run the API stopped still ends with subtype "success"
+ * (GC-015: no Console balance, then the monthly limit), so the agent's last
+ * message is checked for the API errors that end a run.
+ */
+export function outcomeOf(result: ResultEvent): string {
+  const last = result.result ?? "";
+  if (/credit balance is too low/i.test(last)) return "parou por falta de saldo no Claude Console";
+  if (/reached your specified API usage limits/i.test(last)) return "parou no limite de gasto mensal do Claude Console";
+  if (/^API Error/i.test(last.trim())) return "parou por erro da API da Anthropic";
+  return outcomeText[result.subtype ?? ""] ?? result.subtype ?? "desconhecido";
+}
 
 /** Markdown for the issue: what the run cost and how it ended. */
 export function runReport(input: {
@@ -183,8 +208,17 @@ export function runReport(input: {
       `| Turnos | ${result.num_turns ?? "?"} | ${input.maxTurns} |`,
       `| Duração | ${minutes} min | |`,
       "",
-      `Resultado: ${outcomeText[result.subtype ?? ""] ?? result.subtype ?? "desconhecido"}.`,
+      `Resultado: ${outcomeOf(result)}.`,
     );
+    const denied = deniedCalls(result);
+    if (denied.length > 0) {
+      lines.push("", `Comandos bloqueados pelas permissões do ciclo (${denied.length}):`, "");
+      for (const line of denied) lines.push(`- \`${line.replace(/`/g, "'")}\``);
+    }
+    if (!input.prUrl && result.result) {
+      const last = result.result.trim();
+      lines.push("", "Última mensagem do agente:", "", ...last.slice(0, 1500).split("\n").map((l) => `> ${l}`));
+    }
   }
   lines.push(
     "",
