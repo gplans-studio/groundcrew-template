@@ -121,6 +121,9 @@ jobs:
           ANTHROPIC_BASE_URL: ${{ steps.groundcrew.outputs.base_url || 'https://api.anthropic.com' }}
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY || steps.groundcrew.outputs.token }}
+          # D-96: "Ask for a correction" in Groundcrew comments @claude through the
+          # Groundcrew App, and the action refuses bot actors by default.
+          allowed_bots: groundcrew-by-g-plans
           bot_id: "209825114"
           bot_name: "claude[bot]"
           # D-78: the mission pull requests are opened by the bot, so the action

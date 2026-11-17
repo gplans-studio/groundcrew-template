@@ -69,6 +69,9 @@ jobs:
             permission=$(gh api "repos/$GITHUB_REPOSITORY/collaborators/$login/permission" --jq .permission 2>/dev/null || echo none)
             echo "$login: $permission"
             case "$permission" in admin|maintain|write) approvers+=(--approver "$login") ;; esac
+            # D-96: the Groundcrew App comments /conferido only when the project
+            # owner clicks "Checked" in Groundcrew, signed with their login.
+            if [ "$login" = "groundcrew-by-g-plans[bot]" ]; then approvers+=(--approver "$login"); fi
           done
           npm run -s missions:evaluate -- --mission "$RUNNER_TEMP/mission.md" --checks "$RUNNER_TEMP/checks.json" \
             --comments "$RUNNER_TEMP/comments.json" "${approvers[@]}" > "$RUNNER_TEMP/evaluation.md"
