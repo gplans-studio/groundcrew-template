@@ -94,7 +94,7 @@ The **Mission evaluation** workflow runs the rubric for you: whenever CI finishe
 
 The creator opens an issue whose body is the mission file and applies the `groundcrew` label. The **Mission** workflow then:
 
-1. Checks the contract before spending any token. A broken contract, a decision mission, an executor other than `hosted-agent`, a creator prerequisite with `done: false` or a missing `ANTHROPIC_API_KEY` secret ends the run with a comment on the issue.
+1. Checks the contract before spending any token. A broken contract, a decision mission, an executor other than `hosted-agent`, or a creator prerequisite with `done: false` ends the run with a comment on the issue. A repository with its own `ANTHROPIC_API_KEY` secret uses it; one without (every repository Groundcrew creates) gets a short-lived run token from Groundcrew and calls Claude through the Groundcrew proxy, which measures the tokens and caps the spending (`scripts/missions/groundcrew-token.sh`).
 2. Creates the branch named after the mission file (for example `gc-012-foundation`) and saves the mission in `.groundcrew/missions/`.
 3. Runs Claude (`anthropics/claude-code-action`) with the mission's `limits`: `max_turns` (default 120, at most 150) and `max_cost_usd` as a hard spending cap. The job timeout follows the turn limit (15 to 60 minutes).
 4. The agent commits the mission file with its work, pushes the branch and opens the pull request with the report below.
